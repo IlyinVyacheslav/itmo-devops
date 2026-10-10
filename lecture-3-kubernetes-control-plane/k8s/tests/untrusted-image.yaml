@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-untrusted-image
+  labels:
+    app: test
+    owner: student
+spec:
+  containers:
+    - name: nginx
+      image: evil.example.com/nginx:latest
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "64Mi"
