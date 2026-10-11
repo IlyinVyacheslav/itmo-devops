@@ -1,0 +1,10 @@
+allInOne:
+  enabled: true
+storage:
+  type: memory
+provisionDataStore:
+  cassandra: false
+  elasticsearch: false
+agent: { enabled: false }
+collector: { enabled: false }
+query: { enabled: false }
