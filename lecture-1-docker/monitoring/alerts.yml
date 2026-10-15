@@ -1,0 +1,35 @@
+groups:
+  - name: api-container
+    rules:
+      - alert: ContainerMemoryNearLimit
+        expr: |
+          container_memory_usage_bytes{name="api"}
+          / container_spec_memory_limit_bytes{name="api"} > 0.9
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "api использует >90% лимита памяти"
+          description: "RSS {{ $value | humanizePercentage }}. Через несколько секунд — OOMKill."
+
+      - alert: ContainerCPUThrottling
+        expr: |
+          rate(container_cpu_cfs_throttled_periods_total{name="api"}[5m])
+          / rate(container_cpu_cfs_periods_total{name="api"}[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "api постоянно упирается в CPU-лимит"
+          description: "{{ $value | humanizePercentage }} периодов throttled. Латентность растёт."
+
+      - alert: ContainerManyProcesses
+        expr: |
+          container_processes{name="api"}
+          / container_spec_processes_limit{name="api"} > 0.8
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "api приближается к pids.max"
+          description: "{{ $value | humanizePercentage }} от лимита. Опасно для форк-бомбы."
