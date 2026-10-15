@@ -373,3 +373,17 @@ bob@docker-lab:~/itmo/itmo-devops/lecture-1-docker$ sudo docker run --rm -p 8080
 
 Обычный Docker обеспечивает изоляцию средствами самого Linux kernel. gVisor добавляет между контейнером и host kernel дополнительный слой, поэтому предоставляет более сильную границу изоляции при сохранении контейнерной модели.
 
+### Часть 8 - Мониторинг
+
+Был написан docker compose для поднятия приложения, cadvisor, prometheus, grafana.
+Изначально не искались метрики в cadvisor по название сервиса. 
+Для решения этой проблемы был добавлен /lab1.slice/lab1-api.slice.
+
+Получились такие графики 
+![img.png](imgs/img.png)
+
+Созданные алерты и чем они грозят:
+- ContainerMemoryNearLimit (>90%, critical). Ловит: рост RSS к лимиту. Грозит: OOMKill, рестарт пода, потеря запросов
+- ContainerCPUThrottling (>50%, warning). Ловит: упор в CPU-лимит. Грозит: рост latency, таймауты, деградация сервиса
+- ContainerManyProcesses (>80%, warning). Ловит: исчерпание pids.max. Грозит: отказ в создании потоков/процессов, "тихое" зависание api
+
