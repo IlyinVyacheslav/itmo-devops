@@ -11,6 +11,12 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
       validate:
         failureAction: Enforce
         message: "Container must define CPU and memory limits"
@@ -36,13 +42,19 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
       validate:
         failureAction: Enforce
-        message: "Images must come from docker.io/library/"
+        message: "Images must come from docker.io/library/ or ghcr.io/cloudnative-pg/"
         pattern:
           spec:
             containers:
-              - image: "docker.io/library/*"
+              - image: "docker.io/library/* | ghcr.io/cloudnative-pg/*"
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -57,6 +69,12 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
       validate:
         failureAction: Enforce
         message: "Pod must have labels app.kubernetes.io/name, app.kubernetes.io/part-of, owner and env (dev|staging|prod)"
@@ -81,6 +99,12 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
       validate:
         failureAction: Enforce
         message: "Privileged containers are forbidden"
@@ -104,6 +128,12 @@ spec:
           - resources:
               kinds:
                 - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
       validate:
         failureAction: Enforce
         message: "Pod must set runAsNonRoot"
