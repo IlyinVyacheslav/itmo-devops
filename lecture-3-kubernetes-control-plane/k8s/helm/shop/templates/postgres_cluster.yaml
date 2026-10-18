@@ -1,0 +1,24 @@
+{{- if .Values.postgres.enabled }}
+{{- $c := dict "root" . "component" "postgres" }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Release.Name }}-postgres
+  labels:
+    {{ include "shop.labels" $c | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.instances }}
+  storage:
+    size: {{ .Values.postgres.storage.size }}
+  resources:
+    {{ toYaml .Values.postgres.resources | nindent 4 }}
+  bootstrap:
+    initdb:
+      database: orders
+      owner: app
+  inheritedMetadata:
+    labels:
+      app.kubernetes.io/part-of: {{ index .Values.global.labels "app.kubernetes.io/part-of" | quote }}
+      owner: {{ .Values.global.labels.owner | quote }}
+      env: {{ .Values.global.labels.env | quote }}
+{{- end }}
