@@ -31,13 +31,18 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.worker.port }}
-          {{- with .Values.worker.env }}
           env:
-            {{- range $k, $v := . }}
+            {{- range $k, $v := .Values.worker.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
-          {{- end }}
+            {{- if .Values.postgres.enabled }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres-app
+                  key: uri
+            {{- end }}
           readinessProbe:
             httpGet:
               path: {{ .Values.worker.probes.path }}

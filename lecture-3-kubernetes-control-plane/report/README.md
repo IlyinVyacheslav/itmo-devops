@@ -211,3 +211,73 @@ shop-api-7659b88f4f-lmtcg   1/1     Running   0          14m
 shop-api-7659b88f4f-ph2nk   1/1     Running   0          14m
 shop-api-7659b88f4f-qdzlp   1/1     Running   0          15m
 ```
+
+---
+## Часть 3
+Для поднятия CloudNativePG исключим namespace ```cnpg-system``` и ```local-path-storage``` из правил, а также добавим ```ghcr.io/cloudnative-pg/*``` в разрешенные ресурсы
+
+Далее я подготовил шаблон postgres_cluster.yaml для создания кластера PostgreSQL и перезапустил сервис
+
+```bash
+helm repo add cnpg https://cloudnative-pg.github.io/charts
+helm repo update
+helm upgrade --install cnpg cnpg/cloudnative-pg -n cnpg-system --create-namespace --wait
+helm uninstall shop -n shop --ignore-not-found
+helm install shop ./k8s/helm/shop -n shop --create-namespace --wait --timeout 5m
+```
+
+Удалим под Postgres
+
+```bash
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ kubectl delete pod -n shop shop-postgres-1
+pod "shop-postgres-1" deleted from shop namespace
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops$ kubectl get pods -n shop
+NAME                           READY   STATUS    RESTARTS   AGE
+shop-api-779b86478d-27b26      1/1     Running   0          34m
+shop-api-779b86478d-mt2d2      1/1     Running   0          34m
+shop-api-779b86478d-z7rql      1/1     Running   0          34m
+shop-postgres-1                1/1     Running   0          48s
+shop-worker-6f6c567f87-kb6zz   1/1     Running   0          34m
+shop-worker-6f6c567f87-rg6n6   1/1     Running   0          34m
+```
+
+Kube-controller-manager - встроенный компонент Kubernetes. Он следит за встроенными объектами и ничего не знает о конкретных приложениях: пропавший под он просто создаёт заново.
+
+Оператор - тот же цикл сверки spec и status, но для собственного ресурса и с экспертными знаниями о БД: он понимает primary и реплики, диски, пароли и переключение при сбое. Поэтому при удалении пода оператор вернул тот же экземпляр с теми же данными, а не просто новый под.
+
+---
+## Часть 4
+
+Остановим etcd и посмотрим что изменения не проходят
+
+```bash
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ docker exec lab3-control-plane mv /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/etcd.yaml.bak
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ helm upgrade shop ./k8s/helm/shop -n shop --set api.replicaCount=5 --timeout 20s
+Error: UPGRADE FAILED: query: failed to query with labels: the server was unable to return a response in the time allotted, but may still be processing the request (get secrets)
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ kubectl get pods -n shop --request-timeout=5s
+Unable to connect to the server: net/http: request canceled (Client.Timeout exceeded while awaiting headers)
+```
+
+Посмотрим, что приложение живо и сохраняет записи в бд
+```bash
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ docker exec lab3-control-plane curl -s http://$API/health
+okbob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ docker exec lab3-control-plane curl -s http://$API/orders
+[{"id":1,"item":"book","quantity":1,"status":"processed","created_at":"2026-10-18T12:10:49.793453Z","processed_at":"2026-10-18T12:10:50.552729Z"}]
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ docker exec lab3-control-plane curl -s -X POST http://$API/order -d '{"item":"pen","quantity":3}'
+{"id":2,"item":"pen","quantity":3,"status":"pending","created_at":"2026-10-18T12:17:12.767547Z","processed_at":null}
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ docker exec lab3-control-plane curl -s http://$API/orders
+[{"id":1,"item":"book","quantity":1,"status":"processed","created_at":"2026-10-18T12:10:49.793453Z","processed_at":"2026-10-18T12:10:50.552729Z"},{"id":2,"item":"pen","quantity":3,"status":"processed","created_at":"2026-10-18T12:17:12.767547Z","processed_at":"2026-10-18T12:17:14.279153Z"}]
+```
+
+Восстановим etcd 
+```bash
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ docker exec lab3-control-plane mv /etc/kubernetes/etcd.yaml.bak /etc/kubernetes/manifests/etcd.yaml
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ kubectl get pods -n shop
+NAME                           READY   STATUS    RESTARTS   AGE
+shop-api-779b86478d-27b26      1/1     Running   0          66m
+shop-api-779b86478d-mt2d2      1/1     Running   0          66m
+shop-api-779b86478d-z7rql      1/1     Running   0          66m
+shop-postgres-1                1/1     Running   0          33m
+shop-worker-6f6c567f87-kb6zz   1/1     Running   0          66m
+shop-worker-6f6c567f87-rg6n6   1/1     Running   0          66m
+```
