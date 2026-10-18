@@ -1,14 +1,19 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: bad-untrusted-image
+  name: untrusted-image
   labels:
-    app: test
-    owner: student
+    app.kubernetes.io/name: test
+    app.kubernetes.io/part-of: shop
+    owner: bob
+    env: dev
 spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
   containers:
-    - name: nginx
-      image: evil.example.com/nginx:latest
+    - name: hello-world
+      image: bob.example.com/hello-world:latest
       resources:
         limits:
           cpu: "100m"

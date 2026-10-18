@@ -1,0 +1,68 @@
+global:
+  registry: docker.io/library
+  labels:
+    app.kubernetes.io/part-of: shop
+    env: dev
+    owner: bob
+
+api:
+  replicaCount: 4
+  image:
+    repository: shop-api
+    tag: "1.1.0"
+    pullPolicy: IfNotPresent
+  port: 8080
+  env:
+    HEALTH_FAIL: "true"
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits:   {cpu: 500m, memory: 256Mi}
+  service:
+    type: ClusterIP
+    port: 80
+  strategy:
+    maxSurge: 1
+    maxUnavailable: 0
+  probes:
+    path: /health
+    readiness: {initialDelaySeconds: 3, periodSeconds: 5, failureThreshold: 3}
+    liveness:  {initialDelaySeconds: 10, periodSeconds: 10, failureThreshold: 3}
+  progressDeadlineSeconds: 60
+  minReadySeconds: 5
+
+worker:
+  replicaCount: 2
+  image:
+    repository: shop-worker
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  port: 8081
+  env: {}
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits:   {cpu: 250m, memory: 128Mi}
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 80
+  strategy:
+    maxSurge: 1
+    maxUnavailable: 0
+  probes:
+    path: /health
+    readiness: {initialDelaySeconds: 3, periodSeconds: 5, failureThreshold: 3}
+    liveness:  {initialDelaySeconds: 10, periodSeconds: 10, failureThreshold: 3}
+  progressDeadlineSeconds: 60
+  minReadySeconds: 5
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
