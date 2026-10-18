@@ -1,0 +1,15 @@
+{{- $c := dict "root" . "component" "api" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{ include "shop.labels" $c | nindent 4 }}
+spec:
+  type: {{ .Values.api.service.type }}
+  selector:
+    {{ include "shop.selectorLabels" $c | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.api.service.port }}
+      targetPort: http

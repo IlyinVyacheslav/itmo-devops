@@ -1,0 +1,59 @@
+{{- $c := dict "root" . "component" "worker" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-worker
+  labels:
+    {{ include "shop.labels" $c | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  progressDeadlineSeconds: {{ .Values.worker.progressDeadlineSeconds }}
+  minReadySeconds: {{ .Values.worker.minReadySeconds }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.worker.strategy.maxSurge }}
+      maxUnavailable: {{ .Values.worker.strategy.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{ include "shop.selectorLabels" $c | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{ include "shop.labels" $c | nindent 8 }}
+    spec:
+      securityContext:
+        {{ toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: worker
+          image: "{{ .Values.global.registry }}/{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.worker.port }}
+          env:
+            {{- range $k, $v := .Values.worker.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- if .Values.postgres.enabled }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgres-app
+                  key: uri
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.worker.probes.path }}
+              port: http
+            {{ toYaml .Values.worker.probes.readiness | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.worker.probes.path }}
+              port: http
+            {{ toYaml .Values.worker.probes.liveness | nindent 12 }}
+          resources:
+            {{ toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            {{ toYaml .Values.securityContext | nindent 12 }}

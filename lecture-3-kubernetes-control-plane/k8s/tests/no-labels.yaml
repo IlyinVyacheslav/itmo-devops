@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-labels
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+    - name: hello-world
+      image: docker.io/library/hello-world:latest
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "64Mi"
