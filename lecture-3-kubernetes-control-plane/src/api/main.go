@@ -6,9 +6,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"lab3/src/db"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Order struct {
@@ -25,14 +28,32 @@ type CreateOrder struct {
 	Quantity int    `json:"quantity"`
 }
 
+// Пул появляется, когда БД становится доступна. Сервис и /health стартуют без неё.
+var dbPool atomic.Pointer[pgxpool.Pool]
+
+func getPool(w http.ResponseWriter) *pgxpool.Pool {
+	p := dbPool.Load()
+	if p == nil {
+		http.Error(w, "database is not ready", http.StatusServiceUnavailable)
+	}
+	return p
+}
+
 func main() {
 	ctx := context.Background()
 
-	pool, err := db.Open(ctx)
-	if err != nil {
-		log.Fatal("database connection failed: ", err)
-	}
-	defer pool.Close()
+	go func() {
+		for {
+			pool, err := db.Open(ctx)
+			if err == nil {
+				dbPool.Store(pool)
+				log.Println("database connected")
+				return
+			}
+			log.Printf("database connection failed: %v (retry in 5s)", err)
+			time.Sleep(5 * time.Second)
+		}
+	}()
 
 	mux := http.NewServeMux()
 
@@ -47,6 +68,11 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /order", func(w http.ResponseWriter, r *http.Request) {
+		pool := getPool(w)
+		if pool == nil {
+			return
+		}
+
 		var input CreateOrder
 
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -86,6 +112,11 @@ func main() {
 	})
 
 	mux.HandleFunc("GET /orders", func(w http.ResponseWriter, r *http.Request) {
+		pool := getPool(w)
+		if pool == nil {
+			return
+		}
+
 		rows, err := pool.Query(r.Context(), `
 			SELECT id, item, quantity, status, created_at, processed_at
 			FROM orders

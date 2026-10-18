@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
+	"sync/atomic"
 	"time"
 
 	"lab3/src/db"
@@ -12,14 +14,34 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Пул появляется, когда БД становится доступна. /health работает и без неё.
+var dbPool atomic.Pointer[pgxpool.Pool]
+
 func main() {
 	ctx := context.Background()
 
-	pool, err := db.Open(ctx)
-	if err != nil {
-		log.Fatal("database connection failed: ", err)
-	}
-	defer pool.Close()
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		})
+		log.Fatal(http.ListenAndServe(":8081", mux))
+	}()
+
+	// Подключение к БД в фоне, с повторами
+	go func() {
+		for {
+			pool, err := db.Open(ctx)
+			if err == nil {
+				dbPool.Store(pool)
+				log.Println("database connected")
+				return
+			}
+			log.Printf("database connection failed: %v (retry in 5s)", err)
+			time.Sleep(5 * time.Second)
+		}
+	}()
 
 	log.Println("Worker started")
 
@@ -27,8 +49,10 @@ func main() {
 	defer ticker.Stop()
 
 	for {
-		if err := processOne(ctx, pool); err != nil {
-			log.Printf("processing error: %v", err)
+		if pool := dbPool.Load(); pool != nil {
+			if err := processOne(ctx, pool); err != nil {
+				log.Printf("processing error: %v", err)
+			}
 		}
 
 		select {
