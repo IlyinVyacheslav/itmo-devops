@@ -1,0 +1,8 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-rules
+  namespace: {{ .Release.Namespace }}
+spec:
+  groups:
+{{ tpl (toYaml .Values.prometheusRules.groups) . | indent 4 }}
