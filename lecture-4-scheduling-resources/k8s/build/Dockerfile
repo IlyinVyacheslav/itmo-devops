@@ -1,0 +1,12 @@
+FROM golang:1.26 AS build
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY src ./src
+ARG SERVICE
+RUN CGO_ENABLED=0 go build -o /out/app ./src/${SERVICE}
+
+FROM gcr.io/distroless/static:nonroot
+COPY --from=build /out/app /app
+USER 65532:65532
+ENTRYPOINT ["/app"]

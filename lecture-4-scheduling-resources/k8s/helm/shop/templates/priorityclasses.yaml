@@ -1,0 +1,10 @@
+{{- range $k, $pc := .Values.priorityClasses }}
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ $pc.name }}
+value: {{ $pc.value }}
+globalDefault: false
+description: "{{ $.Release.Name }} {{ $k }} priority (lab 4)"
+{{- end }}

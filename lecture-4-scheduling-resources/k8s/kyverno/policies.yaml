@@ -1,0 +1,148 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  background: true
+  rules:
+    - name: require-cpu-and-memory-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
+                - monitoring
+      validate:
+        failureAction: Enforce
+        message: "Container must define CPU and memory limits"
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: trusted-image-registry
+spec:
+  background: true
+  rules:
+    - name: only-library-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
+                - monitoring
+      validate:
+        failureAction: Enforce
+        message: "Images must come from docker.io/library/ or ghcr.io/cloudnative-pg/"
+        pattern:
+          spec:
+            containers:
+              - image: "docker.io/library/* | ghcr.io/cloudnative-pg/*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-pod-labels
+spec:
+  background: true
+  rules:
+    - name: require-standard-labels
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
+                - monitoring
+      validate:
+        failureAction: Enforce
+        message: "Pod must have labels app.kubernetes.io/name, app.kubernetes.io/part-of, owner and env (dev|staging|prod)"
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/name: "?*"
+              app.kubernetes.io/part-of: "?*"
+              owner: "?*"
+              env: "dev | staging | prod"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged
+spec:
+  background: true
+  rules:
+    - name: no-privileged-containers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
+                - monitoring
+      validate:
+        failureAction: Enforce
+        message: "Privileged containers are forbidden"
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                =(securityContext):
+                  =(privileged): false
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-non-root
+spec:
+  background: true
+  rules:
+    - name: require-run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - cnpg-system
+                - local-path-storage
+                - monitoring
+      validate:
+        failureAction: Enforce
+        message: "Pod must set runAsNonRoot"
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true

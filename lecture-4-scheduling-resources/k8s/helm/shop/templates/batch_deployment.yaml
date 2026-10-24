@@ -1,0 +1,40 @@
+{{- if and .Values.batch .Values.batch.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-batch
+  labels:
+    {{ include "shop.labels" (dict "root" . "component" "batch") | nindent 4 }}
+spec:
+  replicas: {{ .Values.batch.replicaCount }}
+  selector:
+    matchLabels:
+      {{ include "shop.selectorLabels" (dict "root" . "component" "batch") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{ include "shop.labels" (dict "root" . "component" "batch") | nindent 8 }}
+    spec:
+      securityContext:
+        {{ toYaml .Values.podSecurityContext | nindent 8 }}
+      priorityClassName: {{ .Values.batch.priorityClassName }}
+      # Часть 7: batch (фоновую «жертву») привязываем к worker-ноде, чтобы давление
+      # по памяти не задевало control-plane (kube-apiserver/etcd живут там).
+      {{- with .Values.batch.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: batch
+          image: "{{ .Values.global.registry }}/{{ .Values.batch.image.repository }}:{{ .Values.batch.image.tag }}"
+          imagePullPolicy: {{ .Values.batch.image.pullPolicy }}
+          env:
+            {{- range $k, $v := .Values.batch.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{ toYaml .Values.batch.resources | nindent 12 }}
+          securityContext:
+            {{ toYaml .Values.securityContext | nindent 12 }}
+{{- end }}

@@ -1,0 +1,17 @@
+{{- if .Values.worker.service.enabled }}
+{{- $c := dict "root" . "component" "worker" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-worker
+  labels:
+    {{ include "shop.labels" $c | nindent 4 }}
+spec:
+  type: {{ .Values.worker.service.type }}
+  selector:
+    {{ include "shop.selectorLabels" $c | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.worker.service.port }}
+      targetPort: http
+{{- end }}

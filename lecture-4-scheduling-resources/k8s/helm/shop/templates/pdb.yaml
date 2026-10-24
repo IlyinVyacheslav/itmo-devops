@@ -1,0 +1,29 @@
+{{- if and .Values.podDisruptionBudgets .Values.podDisruptionBudgets.api.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{ include "shop.labels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudgets.api.minAvailable }}
+  selector:
+    matchLabels:
+      {{ include "shop.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+{{- end }}
+{{- if and .Values.podDisruptionBudgets .Values.podDisruptionBudgets.worker.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-worker
+  labels:
+    {{ include "shop.labels" (dict "root" . "component" "worker") | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudgets.worker.minAvailable }}
+  selector:
+    matchLabels:
+      {{ include "shop.selectorLabels" (dict "root" . "component" "worker") | nindent 6 }}
+{{- end }}
+# PDB для postgres НЕ создаём: CNPG сам управляет PDB своих подов
+# (shop-postgres-primary и т.п.) и удаляет чужие PDB. Postgres защищён им.
