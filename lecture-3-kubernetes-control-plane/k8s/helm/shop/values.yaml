@@ -75,3 +75,39 @@ postgres:
   resources:
     requests: {cpu: 100m, memory: 256Mi}
     limits:   {cpu: 500m, memory: 512Mi}
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  path: /metrics
+
+prometheusRules:
+  groups:
+    - name: shop.rules
+      rules:
+        - alert: ShopRolloutStuck
+          expr: |
+            kube_deployment_status_replicas_unavailable{namespace="{{ .Release.Namespace }}", deployment=~"{{ .Release.Name }}-(api|worker)"} > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Rollout api/worker завис: есть неготовые реплики дольше минуты"
+
+        - alert: ShopPodRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}"}[5m]) > 2
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Контейнер в namespace shop перезапускается более 2 раз за 5 минут"
+
+        - alert: ShopPostgresDown
+          expr: |
+            (sum(kube_pod_status_ready{namespace="{{ .Release.Namespace }}", pod=~"{{ .Release.Name }}-postgres-[0-9]+", condition="true"}) or vector(0)) < 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Нет ни одного готового пода postgres"
