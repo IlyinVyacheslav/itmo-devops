@@ -1,0 +1,56 @@
+prometheus:
+  prometheusSpec:
+    scrapeInterval: 15s
+    retention: 2d
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeEtcd: { enabled: false }
+kubeProxy: { enabled: false }
+
+grafana:
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL   # подхватывать дашборды-ConfigMap из любых namespace
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki.monitoring:3100
+      jsonData:
+        derivedFields:
+          - matcherRegex: '"trace_id": "([a-f0-9]+)"'
+            name: TraceID
+            url: "$${__value.raw}"
+            datasourceUid: jaeger
+    - name: Jaeger
+      type: jaeger
+      uid: jaeger
+      url: http://jaeger.monitoring:16686
+
+alertmanager:
+  alertmanagerSpec:
+    configSecret: alertmanager-monitoring-kube-prometheus-alertmanager
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: 'webhook-receiver'
+      group_by: ['alertname', 'namespace', 'severity']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 5m
+      routes:
+        - match:
+            alertname: Watchdog
+          receiver: 'null'
+    receivers:
+      - name: 'null'
+      - name: 'webhook-receiver'
+        webhook_configs:
+          - url: 'http://webhook-receiver.monitoring.svc.cluster.local:8080/'
+            send_resolved: true

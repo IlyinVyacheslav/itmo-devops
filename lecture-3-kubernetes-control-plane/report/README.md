@@ -281,3 +281,31 @@ shop-postgres-1                1/1     Running   0          33m
 shop-worker-6f6c567f87-kb6zz   1/1     Running   0          66m
 shop-worker-6f6c567f87-rg6n6   1/1     Running   0          66m
 ```
+
+---
+## Чать 5
+
+В Helm-чарт добавлены ServiceMonitor и PrometheusRule с тремя алертами:
+- ShopRolloutStuck - неготовые реплики api/worker более 1 минуты
+- ShopPodRestarting - более 2 рестартов контейнера за 5 минут
+- ShopPostgresDown - отсутствие готового PostgreSQL пода более 1 минуты
+
+Применение правил
+```bash
+helm template shop ./k8s/helm/shop -n shop \
+  -f ./k8s/helm/shop/values.yaml \
+  --show-only templates/prometheusrule.yaml \
+  > /tmp/shop-prometheusrule.yaml
+
+kubectl apply -f /tmp/shop-prometheusrule.yaml
+```
+
+Стопнем под
+```bash
+bob@DESKTOP-VLRMEAB:/mnt/c/Users/bob/GolandProjects/awesomeProject/itmo-devops/lecture-3-kubernetes-control-plane$ kubectl set env deployment/shop-api -n shop HEALTH_FAIL=true
+deployment.apps/shop-api env updated
+```
+
+В итоге алерт сработал
+
+![img.png](imgs/img.png)
