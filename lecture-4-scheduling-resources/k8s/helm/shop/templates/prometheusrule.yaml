@@ -1,0 +1,46 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-rules
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{ include "shop.labels" (dict "root" . "component" "rules") | nindent 4 }}
+spec:
+  groups:
+    # Три алерта критического пути (Часть 9). Обоснование в README.
+    - name: shop-critical-path
+      rules:
+        - alert: ShopApiDown
+          # Минута без единого доступного target api = полный отказ входа
+          # в критический путь. ВАЖНО: `sum(up{...}) == 0` при нуле target'ов
+          # даёт пусто (нет серий), поэтому алерт никогда бы не взлетел.
+          # `absent()` возвращает 1 именно когда серий нет.
+          expr: absent(up{namespace="{{ .Release.Namespace }}",service="{{ .Release.Name }}-api"})
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Shop API полностью недоступен"
+            description: "Нет доступных target'ов у {{ .Release.Name }}-api более 1 минуты — вход в критический путь лежит."
+
+        - alert: ShopApiErrorBurst
+          # Пять HTTP-ошибок (5xx) api за 2 минуты: api ещё может быть up,
+          # но уже деградирует.
+          expr: sum(increase(shop_api_requests_total{namespace="{{ .Release.Namespace }}",code=~"5.."}[2m])) >= 5
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Всплеск 5xx у Shop API"
+            description: ">=5 ошибок 5xx за 2 минуты у {{ .Release.Name }}-api — сервис деградирует."
+
+        - alert: ShopWorkerFailure
+          # Одна ошибка асинхронной обработки за 5 минут: ответ api сам по
+          # себе не гарантирует, что заказ обработан worker'ом.
+          expr: increase(shop_worker_errors_total{namespace="{{ .Release.Namespace }}"}[5m]) >= 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Сбой обработки заказа worker'ом"
+            description: "Worker'ы {{ .Release.Name }} зафиксировали ошибку обработки за последние 5 минут."

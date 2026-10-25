@@ -12,6 +12,21 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+// Метрика ошибок обработки для алерта ShopWorkerFailure (Часть 9).
+var (
+	processErrs = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "shop_worker_errors_total",
+		Help: "Total async order processing errors",
+	})
+	processJobs = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "shop_worker_jobs_total",
+		Help: "Total processed jobs",
+	})
 )
 
 // Пул появляется, когда БД становится доступна. /health работает и без неё.
@@ -26,6 +41,7 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("ok"))
 		})
+		mux.Handle("/metrics", promhttp.Handler())
 		log.Fatal(http.ListenAndServe(":8081", mux))
 	}()
 
@@ -51,7 +67,10 @@ func main() {
 	for {
 		if pool := dbPool.Load(); pool != nil {
 			if err := processOne(ctx, pool); err != nil {
+				processErrs.Inc()
 				log.Printf("processing error: %v", err)
+			} else {
+				processJobs.Inc()
 			}
 		}
 

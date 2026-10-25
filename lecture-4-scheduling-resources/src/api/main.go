@@ -6,13 +6,56 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"sync/atomic"
 	"time"
 
 	"lab3/src/db"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+// RED-метрики для мониторинга Части 9: счётчик запросов по коду/роуту и
+// гистограмма времени ответа. Отдаются на /metrics, скребёт ServiceMonitor.
+var (
+	httpReqs = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "shop_api_requests_total",
+		Help: "Total HTTP requests by status code and route",
+	}, []string{"code", "route"})
+
+	httpDur = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "shop_api_request_duration_seconds",
+		Help:    "HTTP request latency seconds",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"route"})
+)
+
+// statusRecorder запоминает код ответа, чтобы посчитать его в метрике.
+type statusRecorder struct {
+	http.ResponseWriter
+	code int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.code = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func instrument(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
+		next(rec, r)
+		if rec.code == 0 {
+			rec.code = http.StatusOK
+		}
+		httpReqs.WithLabelValues(strconv.Itoa(rec.code), r.URL.Path).Inc()
+		httpDur.WithLabelValues(r.URL.Path).Observe(time.Since(start).Seconds())
+	}
+}
 
 type Order struct {
 	ID          int64      `json:"id"`
@@ -57,7 +100,10 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+	// /metrics — сервисная RED-метрика для ServiceMonitor (Часть 9)
+	mux.Handle("/metrics", promhttp.Handler())
+
+	mux.Handle("GET /health", instrument(func(w http.ResponseWriter, r *http.Request) {
 		if os.Getenv("HEALTH_FAIL") == "true" {
 			http.Error(w, "unhealthy", http.StatusServiceUnavailable)
 			return
@@ -65,9 +111,9 @@ func main() {
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
-	})
+	}))
 
-	mux.HandleFunc("POST /order", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("POST /order", instrument(func(w http.ResponseWriter, r *http.Request) {
 		pool := getPool(w)
 		if pool == nil {
 			return
@@ -109,9 +155,9 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(order)
-	})
+	}))
 
-	mux.HandleFunc("GET /orders", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /orders", instrument(func(w http.ResponseWriter, r *http.Request) {
 		pool := getPool(w)
 		if pool == nil {
 			return
@@ -156,7 +202,7 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(orders)
-	})
+	}))
 
 	server := &http.Server{
 		Addr:              ":8080",

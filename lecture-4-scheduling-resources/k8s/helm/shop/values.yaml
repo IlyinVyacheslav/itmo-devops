@@ -5,6 +5,13 @@ global:
     env: dev
     owner: bob
 
+# Часть 9: ServiceMonitor скребёт /metrics api и worker (RED-метрики),
+# PrometheusRule с тремя алертами критического пути.
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  path: /metrics
+
 api:
   scheduling:
     mode: topologySpreadConstraints   # podAntiAffinity | topologySpreadConstraints
@@ -15,7 +22,7 @@ api:
   replicaCount: 3
   image:
     repository: shop-api
-    tag: "1.0.0"
+    tag: "1.0.1"
     pullPolicy: IfNotPresent
   port: 8080
   env:
@@ -45,7 +52,7 @@ worker:
   replicaCount: 2
   image:
     repository: shop-worker
-    tag: "1.0.0"
+    tag: "1.0.1"
     pullPolicy: IfNotPresent
   port: 8081
   env: {}
@@ -102,10 +109,9 @@ batch:
     tag: "0.2.2"
     pullPolicy: IfNotPresent
   env:
-    # Часть 8 (перегрузка, исторический вариант до демо): 6 реплик × 3 CPU-воркера,
-    # лимит CPU 2000m — batch реально жрал worker (до ~12 ядер на общем хосте),
-    # отчего на этом же worker упал мониторинг-Prometheus. Дефолт Части 5:
-    # replicaCount 2, CPU_WORKERS 1, лимит 300m.
+    # Часть 8 (графики в Grafana, исторический вариант): сценарий A — 4 реплики × 3
+    # CPU-воркера, лимит 300m, для скриншотов дашборда. Возвращено к Части 5:
+    # replicaCount 2, CPU_WORKERS 1.
     BATCH_CPU_WORKERS: "1"
     BATCH_MEM_MB: "128"
   priorityClassName: shop-batch

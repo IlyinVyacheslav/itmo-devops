@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-part8-sla-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  part8-sla.json: |
+    {
+      "title": "Shop /order SLA (Part 8)",
+      "uid": "shop-part8-sla",
+      "schemaVersion": 39,
+      "version": 1,
+      "time": {"from": "now-15m", "to": "now"},
+      "refresh": "10s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Задержка /order под нагрузкой (k6), мс",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {"unit": "ms"},
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "k6_http_req_duration_p95 * 1000",
+              "legendFormat": "p95",
+              "refId": "A"
+            },
+            {
+              "expr": "k6_http_req_duration_p99 * 1000",
+              "legendFormat": "p99",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Доля ошибок /order (k6)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {"unit": "percentunit"},
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "k6_http_req_failed_rate",
+              "legendFormat": "failed_rate",
+              "refId": "A"
+            },
+            {
+              "expr": "1 - k6_checks_rate",
+              "legendFormat": "1 - checks_ok",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "CPU batch (ядра) — фон, который должен деградировать",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {"unit": "short"},
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"shop\",container=\"batch\"}[$__rate_interval])) by (pod)",
+              "legendFormat": "{{pod}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Память batch (working set, MiB) + лимит",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {"unit": "mbytes"},
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"shop\",container=\"batch\"}) by (pod) / 1024 / 1024",
+              "legendFormat": "{{pod}}",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }

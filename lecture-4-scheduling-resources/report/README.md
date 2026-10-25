@@ -653,6 +653,24 @@ CNPG-webhook (тоже на worker) лёг → `connect refused` → fail-closed
 фоновой нагрузки и сбились на ту же ноду, что и batch. Это повод явно
 изолировать инфраструктурные поды от нагруженных нод.
 
+## Графики (Grafana)
+
+Данные для графиков собирал так: k6 писал временные серии прямо в Prometheus
+через remote-write (`k6_http_req_duration_*`, `k6_http_req_failed_rate`,
+`k6_checks_rate`), а дашборд **«Shop /order SLA (Part 8)»** провижинил через
+ConfigMap (sidecar `grafana_dashboard=1`). Скриншоты — с этого дашборда за окно
+перегрузки прогона A (4×300m).
+
+Задержка и ошибки `/order` под перегрузкой — низкая ровная линия p95/p99,
+ошибок нет:
+
+![SLA: задержка и ошибки /order](imgs/p8_sla_latency.png)
+
+Фон при этом деградирует: CPU batch в том же окне растёт (4 реплики
+молотят ядра на worker), а путь заказа держится:
+
+![SLA: CPU/память batch (фон деградирует)](imgs/p8_batch_cpu.png)
+
 ## Урок планирования (главное из Части 8)
 
 Перегрузка «не долетает» до критического пути из-за **сочетания** планирования
@@ -662,13 +680,52 @@ CNPG-webhook (тоже на worker) лёг → `connect refused` → fail-closed
 сделать нельзя (Часть 7) — она несжимаемая, и любой перебор бьёт по всему хосту.
 
 # Часть 9 — Мониторинг
-*(заполняется)*
 
-Идея: `ServiceMonitor` + `PrometheusRule` (3 алерта), проверка через API
-Prometheus, спровоцировать хотя бы один алерт в состоянии firing.
+Добавил в чарт `shop` шаблоны `ServiceMonitor`/`PrometheusRule` и завязал их на
+стек из Лабы 2 (Prometheus/Grafana/Alertmanager в namespace `monitoring`).
 
-# Часть 9 — Мониторинг
-*(заполняется)*
+## Источник метрик
 
-Идея: `ServiceMonitor` + `PrometheusRule` (3 алерта), проверка через API
-Prometheus, спровоцировать хотя бы один алерт в состоянии firing.
+У `api`/`worker` не было `/metrics` — доработал оба сервиса (`prometheus/client_golang`):
+- `api`: `shop_api_requests_total{code,route}` + `shop_api_request_duration_seconds`
+  (RED), хендлер `/metrics`;
+- `worker`: `shop_worker_errors_total` (счётчик ошибок асинхронной обработки),
+  `/metrics`.
+
+`ServiceMonitor` (`shop-api` / `shop-worker`) скребёт эти `/metrics`; для
+`api` подтвердил через API Prometheus, что все 3 target'а живые (`up == 1`).
+Правила подхвачены (проверил `GET /api/v1/rules?type=alert`).
+
+## 3 алерта и обоснование
+
+| Алерт | Выражение | Окно | Severity | Зачем |
+|---|---|---|---|---|
+| `ShopApiDown` | `absent(up{service="shop-api"})` | 1м | **critical** | минута без единого доступного target api = полный отказ входа в критический путь |
+| `ShopApiErrorBurst` | `sum(increase(shop_api_requests_total{code=~"5.."}[2m])) >= 5` | 1м | warning | `api` ещё up, но уже деградирует (всплеск 5xx) |
+| `ShopWorkerFailure` | `increase(shop_worker_errors_total[5m]) >= 1` | 1м | **critical** | ответ `api` сам по себе не гарантирует, что заказ обработан worker'ом асинхронно |
+
+## Ловушка, из-за которой алерт «не взлетал»
+
+Первый черновик `ShopApiDown` был `sum(up{...}) == 0`. На практике он **никогда
+не срабатывал**: когда target'ов ноль, у `up{...}` вообще нет серий, `sum()` от
+пустоты даёт «нет данных», а не `0`, и `нет данных == 0` возвращает пусто →
+правило молчит даже при полном отказе. Это видно и на стековых дефолтах
+(`Watchdog`/`InfoInhibitor` всегда firing — они специально «всегда-выключенные»).
+Заменил на `absent(up{...})`: он возвращает `1` именно тогда, когда серий нет.
+(Диагностика по фазам `pending` → `firing` подтвердила, что новое expr валидно.)
+
+## Провоцирование firing и восстановление
+
+Спровоцировал критический алерт `ShopApiDown` — временно обнулил `api`
+(`kubectl scale deploy shop-api --replicas=0 -n shop`). Правило прошло фазы
+`pending` → `firing`:
+
+![ShopApiDown firing](imgs/p9_alert_firing.png)
+
+Затем вернул `api` в 3 реплики — алерт корректно разрешился в `inactive`
+(не залипает):
+
+![ShopApiDown resolved](imgs/p9_alert_resolved.png)
+
+Полный цикл работает: реальная поломка → алерт; устранение → тишина.
+Метрики/правила/скриншоты — поверх общего стека Лабы 2.
