@@ -103,30 +103,37 @@ postgres:
 
 batch:
   enabled: true
-  replicaCount: 2
+  replicaCount: 1
   image:
     repository: batch
     tag: "0.2.2"
     pullPolicy: IfNotPresent
   env:
-    # Часть 8 (графики в Grafana, исторический вариант): сценарий A — 4 реплики × 3
-    # CPU-воркера, лимит 300m, для скриншотов дашборда. Возвращено к Части 5:
-    # replicaCount 2, CPU_WORKERS 1.
-    BATCH_CPU_WORKERS: "1"
-    BATCH_MEM_MB: "128"
+    # Часть 7 (demo eviction): единственный «монстр» на worker, только память
+    # (без CPU), цель ~6Gi — после поднятого evictionHard.memory.available=1Gi
+    # (правка /var/lib/kubelet/config.yaml на worker) kubelet выселяет его по
+    # node-pressure до host-OOM. После демо возвращено к Части 5.
+    BATCH_CPU_WORKERS: "0"
+    BATCH_MEM_MB: "6000"
   priorityClassName: shop-batch
+  # Пиним на worker: только там поднят evictionHard.memory.available=1Gi,
+  # иначе планировщик кладёт монстра на control-plane (рядом с apiserver) —
+  # это рискованно и не даёт чистого демо.
+  nodeSelector:
+    kubernetes.io/hostname: lab4-worker
   # --- история batch (requests / limits) ---
   # Части 0-2:   100m/128Mi / 200m/256Mi
   # Часть 3 (krr): 202m/151Mi / 300m/151Mi
   # Часть 5:     202m/151Mi / 300m/256Mi        # Burstable
   # Часть 7: эксперименты по памяти (4×700, 4×1750, single-hog, замедленный
-  #   темп) — стабильно OOMKilled, т.к. нода 7.7Gi + общий хост; после демо
-  #   batch возвращён в состояние Части 5. Подробности в репорте, Часть 7.
+  #   темп) — стабильно OOMKilled при ноде 7.7Gi и пороге eviction 100Mi.
+  #   После подъёма evictionHard.memory.available=1Gi один hog на 6Gi дал
+  #   настоящий node-pressure `Evicted`. Возвращено к Части 5.
   # Часть 8: перегрузка CPU — 6×2000m (жрал worker до 12 ядер, валил мониторинг
   #   на той же ноде). Возвращено к Части 5 как финальное состояние.
   resources:
-    requests: {cpu: 202m, memory: 151Mi}
-    limits:   {cpu: 300m, memory: 256Mi}
+    requests: {cpu: 100m, memory: 64Mi}
+    limits:   {cpu: 500m, memory: 7Gi}
 
 # Приоритеты для Части 5: критический путь (api) — высокий, batch — ниже
 # дефолта, чтобы в Части 6 его первым делом вытесняли при нехватке ресурсов.
